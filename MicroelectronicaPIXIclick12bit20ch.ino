@@ -71,6 +71,9 @@ void setup() {
 
   setDACreferenceInternal();
   setDACpins();
+  for (int pin = 0; pin < 19; pin++) {
+    setCHoutput(pin, 2048);
+  }
 
   //digitalWrite(SELECT_PIN, LOW);
   //SPIV->beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));  //MSBFIRST
