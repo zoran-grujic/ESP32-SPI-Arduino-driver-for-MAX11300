@@ -36,6 +36,10 @@ void serialReadLine(char *serialChars);
 void parseData();
 void showParsedData();
 
+unsigned long lastTmpReadTime_ms = 0;
+int tmpReadPeriod_ms = 1000;  //read temperature every tmpReadPeriod_ms
+unsigned long time_ms;
+
 // long, int, float, char, word (A word can store an unsigned number of at least 16 bits (from 0 to 65535).)
 
 const int led = 1;  // pin with a LED
@@ -44,7 +48,6 @@ pinMode_t dac = pinMode_t(MAX_FUNCID_DAC);  //pin mode DAC
 ADCref_t reference_internal = ADCref_t(ADCInternal);
 MAX11300 MAX = MAX11300(&SPI, CONV_PIN, SELECT_PIN);
 */
-byte spi[3];
 
 void setup() {
   // put your setup code here, to run once:
@@ -56,6 +59,7 @@ void setup() {
   SPIV = new SPIClass(VSPI);
   //SPIV->begin();
   SPIV->begin(SCK, MISO, MOSI, SS);  //Start SPI communication
+  /*
   Serial.print("SCK ");
   Serial.println(SCK);
   Serial.print("MISO ");
@@ -64,13 +68,15 @@ void setup() {
   Serial.println(MOSI);
   Serial.print("SS ");
   Serial.println(SS);
+  */
 
-  uint16_t id = read2byteSPI(0);
+  uint16_t id = read2ByteSPI(0);  // get device ID
   Serial.print("Chip id:");
   Serial.println(id);
 
   setDACreferenceInternal();
   setDACpins();
+  enableINTTEMP();
 
   //digitalWrite(SELECT_PIN, LOW);
   //SPIV->beginTransaction(SPISettings(20000000, MSBFIRST, SPI_MODE0));  //MSBFIRST
@@ -99,25 +105,29 @@ void loop() {
     parseData();
   }
 
-  spi[0] = 0x08;  //B00110000;  //Write to and Update (Power Up)
-  spi[1] = 0;     // highByte(out);
-  spi[2] = 0;     //lowByte(out);
   uint16_t data = 0;
-  //digitalWrite(SELECT_PIN, HIGH);
 
-  /*
-   data= read2byteSPI(MAX_TMPINTDAT);//read temperature
-  
+  time_ms = millis();
+  if ((unsigned long)(time_ms - lastTmpReadTime_ms) >= tmpReadPeriod_ms) {
+    lastTmpReadTime_ms = time_ms;
 
-  Serial.print("temp: ");
-  Serial.println(data);
-  //Serial.print("device id: ");
-  //Serial.println(0x0424);
-  delay(500);
-  */
+    float temp = readTemperature_C(MAX_TMPINTDAT);  //read temperature
+    Serial.print("temp: ");
+    Serial.print(temp);
+    Serial.println(" C");
+    /*
+    data = read2ByteSPI(MAX_DEVCTL); //read Device control register
+    Serial.print("DEVCTL: ");
+    Serial.println(data);
+    printBin(data,16);
+    Serial.write('\n');
+    //Serial.print("device id: ");
+    //Serial.println(0x0424);
+    */
+  }
 }
 
-uint16_t read2byteSPI(uint16_t address) {
+uint16_t read2ByteSPI(uint16_t address) {
 
   uint16_t value = 0;
   SPIV->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
@@ -130,6 +140,18 @@ uint16_t read2byteSPI(uint16_t address) {
   digitalWrite(SS, HIGH);
   SPIV->endTransaction();
   return value;
+}
+
+void write2ByteSPI(uint16_t address, uint16_t value) {
+  SPIV->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+  digitalWrite(SS, LOW);
+  //Serial.println("SPIV");
+  SPIV->transfer((address << 1) + 0);  //write
+  SPIV->transfer(highByte(value));
+  SPIV->transfer(lowByte(value));
+
+  digitalWrite(SS, HIGH);
+  SPIV->endTransaction();
 }
 
 // read input from GUI
@@ -161,7 +183,10 @@ void parseData() {  // split the data into its parts
     Serial.println(DRIVER_NAME);
     Serial.println("I accept commands:");
     Serial.println("\t ? or help  - to get this output");
-    Serial.println("\tset <int:ch number> <int:desired output 0-2^12>");
+    Serial.println("\t set <int:ch number> <int:desired output 0-2^12>");
+    Serial.println("\t readaddress <hex/int:register address 0-0x73>");
+     Serial.println("\t temperature?");
+    
     return;
   }
 
@@ -185,28 +210,41 @@ void parseData() {  // split the data into its parts
 
     Serial.println();  //clear a line
   }
+  if (strcmp(commandFromSerial, "readaddress") == 0) {  //read register value and print
+
+    if ((strtokIndx = strtok(NULL, " ")) != NULL)  //get ch number
+    {
+      uint16_t address = (uint16_t)strtoul(strtokIndx, NULL, 0);  //atoi(strtokIndx);
+      uint16_t value = read2ByteSPI(address);
+      Serial.print("Register adr: 0x");
+      Serial.print(address, HEX);
+      Serial.print(" -> ");
+      printBin(value, 16);
+      Serial.print(" -> 0x");
+      Serial.print(value, HEX);
+      Serial.print(" -> ");
+      Serial.print(value);
+      Serial.println();
+    }
+  }
 
   if (strcmp(commandFromSerial, "temperature?") == 0) {
-    uint16_t temp_b = read2byteSPI(MAX_TMPINTDAT);
-    int16_t temp = ((int16_t)(temp_b << 4) * TEMP_LSB);
+    //uint16_t temp_b = read2ByteSPI(MAX_TMPINTDAT);
+    float temp = readTemperature_C(MAX_TMPINTDAT);  //((int16_t)(temp_b << 4) * TEMP_LSB);
     Serial.print("Internal temperature: ");
     Serial.print(temp);
     Serial.println(" C");
   }
 }
 
+float readTemperature_C(uint16_t address) {
+  return ((int16_t)(read2ByteSPI(address) << 4) * TEMP_LSB);  //MAX_TMPINTDAT
+}
+
 void setCHoutput(uint16_t pin, uint16_t value) {
   //DAC adress 0x60 - 0x73
-  SPIV->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(SS, LOW);
-  //Serial.println("SPIV");
-  SPIV->transfer(((0x60 + pin) << 1) + 0);  //write
-
-  SPIV->transfer(highByte(value));
-  SPIV->transfer(lowByte(value));
-
-  digitalWrite(SS, HIGH);
-  SPIV->endTransaction();
+  uint16_t address = 0x60 + pin;
+  write2ByteSPI(address, value);
 }
 
 void setDACpins() {
@@ -217,65 +255,28 @@ void setDACpins() {
   // 00000 - ASSOCIATED PORT
   uint16_t data = 0x5200;  // B01010 010 000 00000;
   for (uint16_t i = 0; i < 20; i++) {
-    SPIV->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-    digitalWrite(SS, LOW);
-    //Serial.println("SPIV");
-    SPIV->transfer(((0x20 + i) << 1) + 0);  //write
-
-    SPIV->transfer(highByte(data));
-    SPIV->transfer(lowByte(data));
-
-    digitalWrite(SS, HIGH);
-    SPIV->endTransaction();
+    write2ByteSPI(0x20 + i, data);
   }
 }
 
 void setDACreferenceInternal() {
-  uint16_t data = 0;
-  SPIV->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(SS, LOW);
-  //Serial.println("SPIV");
-  SPIV->transfer((0x10 << 1) + 1);  //read
-  data |= (uint16_t)SPIV->transfer(0) << 8;
-  data |= (uint16_t)SPIV->transfer(0);
 
-  digitalWrite(SS, HIGH);
-  SPIV->endTransaction();
+  uint16_t data = read2ByteSPI(MAX_DEVCTL);
   //data is current state of the register
 
-  data |= B1000000;  //set bit 6 to 1
-
-  SPIV->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
-  digitalWrite(SS, LOW);
-  //Serial.println("SPIV");
-  SPIV->transfer((0x10 << 1) + 0);  //write
-
-  SPIV->transfer(highByte(data));
-  SPIV->transfer(lowByte(data));
-
-  digitalWrite(SS, HIGH);
-  SPIV->endTransaction();
+  data |= B1000000;                 //set bit 6 to 1
+  write2ByteSPI(MAX_DEVCTL, data);  //write to config register
 }
 
-// monitor_speed = // Serial monitor
+void enableINTTEMP() {
+  uint16_t data = read2ByteSPI(MAX_DEVCTL);
+  //data is current state of the register
 
-/*
-char Set Chanel Num;                     // an array to store the received data
-char set_ch_num;                       // temporary array for use when parsing
-
-void loop() {
-  if (Serial.available()) {
-    String received = Serial.readStringUntil('')
-  }
+  data |= 0x0100;                   //set bit 8 to 1, 8->internal temperature, 9->external 1, 10->external 2
+  write2ByteSPI(MAX_DEVCTL, data);  //write to config register
 }
 
-void loop() {
-  if (espSerial.available()) {
-    String received = espSerial.readStringUntil('');
-    received.trim(); // remove any trailing whitespace
-    Serial.println("Received from Arduino: " + );
-
-  }
+void printBin(uint16_t aByte, int digits) {
+  for (int8_t aBit = digits - 1; aBit >= 0; aBit--)
+    Serial.write(bitRead(aByte, aBit) ? '1' : '0');
 }
-
-*/
