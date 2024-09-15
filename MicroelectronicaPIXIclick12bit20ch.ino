@@ -52,7 +52,7 @@ MAX11300 MAX = MAX11300(&SPI, CONV_PIN, SELECT_PIN);
 void setup() {
   // put your setup code here, to run once:
   //pinMode (LED_BUILTIN, OUTPUT);  // setting the valtage  // initialize digital pin LED_BULETIN as an output
-  Serial.begin(115200);  // start serial communication
+  Serial.begin(115200, SERIAL_8N1);  // start serial communication
   // Serial.begin vs arduinoSerial.begin ??
   pinMode(SELECT_PIN, OUTPUT);
 
@@ -98,7 +98,7 @@ void loop() {
 
   if (Serial.available()) {
     serialReadLine(serialChars);
-    Serial.println("Dobio podatak");
+    //Serial.println("Dobio podatak");
     Serial.println(serialChars);
     //newData = true;
     strcpy(tempChars, serialChars);
@@ -185,8 +185,9 @@ void parseData() {  // split the data into its parts
     Serial.println("\t ? or help  - to get this output");
     Serial.println("\t set <int:ch number> <int:desired output 0-2^12>");
     Serial.println("\t readaddress <hex/int:register address 0-0x73>");
-     Serial.println("\t temperature?");
-    
+    Serial.println("\t temperature?");
+    Serial.println("\t whois? - return name of the driver");
+
     return;
   }
 
@@ -207,9 +208,14 @@ void parseData() {  // split the data into its parts
         setCHoutput(pin, value);
       }
     }
-
     Serial.println();  //clear a line
-  }
+  }                    //end if set
+  if (strcmp(commandFromSerial, "whois?") == 0) {
+    //print DRIVER_NAME
+    Serial.println(DRIVER_NAME);
+    return;
+  }  //end if whois?
+
   if (strcmp(commandFromSerial, "readaddress") == 0) {  //read register value and print
 
     if ((strtokIndx = strtok(NULL, " ")) != NULL)  //get ch number
@@ -235,6 +241,10 @@ void parseData() {  // split the data into its parts
     Serial.print(temp);
     Serial.println(" C");
   }
+
+  //command not recognised
+  Serial.print(commandFromSerial);
+  Serial.println(" not recognised.");
 }
 
 float readTemperature_C(uint16_t address) {
