@@ -263,17 +263,15 @@ void setDACpins() {
   //010 -5 to +5 - Range
   // 000 - ADC only # of samples
   // 00000 - ASSOCIATED PORT
-  uint16_t data = 0x5200;  // B01010 010 000 00000;
+  uint16_t data = 0x5200;  // B 0101 0010 0000 0000;
   for (uint16_t i = 0; i < 20; i++) {
     write2ByteSPI(0x20 + i, data);
   }
 }
 
 void setDACreferenceInternal() {
-
   uint16_t data = read2ByteSPI(MAX_DEVCTL);
   //data is current state of the register
-
   data |= B1000000;                 //set bit 6 to 1
   write2ByteSPI(MAX_DEVCTL, data);  //write to config register
 }
