@@ -193,22 +193,23 @@ void parseData() {  // split the data into its parts
 
   if (strcmp(commandFromSerial, "set") == 0) {
     //set ch output
-    Serial.print("Got: set ");
+    //Serial.print("Got: set ");
     if ((strtokIndx = strtok(NULL, " ")) != NULL)  //get ch number
     {
 
       uint8_t pin = atoi(strtokIndx);  // convert this part to an integer
-      Serial.print(pin);
-      Serial.print(" ");
+      //Serial.print(pin);
+      //Serial.print(" ");
       if ((strtokIndx = strtok(NULL, " ")) != NULL)  //get number
       {
         uint16_t value = atoi(strtokIndx);
-        Serial.println(value);
+        //Serial.println(value);
         //void setCHoutput(uint16_t pin, uint16_t value)
         setCHoutput(pin, value);
       }
     }
     Serial.println();  //clear a line
+    return;
   }                    //end if set
   if (strcmp(commandFromSerial, "whois?") == 0) {
     //print DRIVER_NAME
@@ -232,6 +233,7 @@ void parseData() {  // split the data into its parts
       Serial.print(value);
       Serial.println();
     }
+    return;
   }
 
   if (strcmp(commandFromSerial, "temperature?") == 0) {
@@ -240,6 +242,7 @@ void parseData() {  // split the data into its parts
     Serial.print("Internal temperature: ");
     Serial.print(temp);
     Serial.println(" C");
+    return;
   }
 
   //command not recognised
